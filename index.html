@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>متابعة العملاء - Tafaal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel2:#1c2438; --border:#2a3450;
+    --text:#e7ecf7; --muted:#93a0bf; --accent:#5b8cff; --accent2:#3ddc97;
+    --danger:#ff6b6b; --warn:#ffb454;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Segoe UI', Tahoma, Arial, sans-serif;
+    background:linear-gradient(160deg,#0b0f19,#131a2b); color:var(--text);
+    min-height:100vh;
+  }
+  header{
+    padding:22px 28px; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;
+    background:rgba(22,29,46,0.6); backdrop-filter:blur(6px); position:sticky; top:0; z-index:50;
+  }
+  header h1{margin:0; font-size:20px; display:flex; align-items:center; gap:10px;}
+  header h1 span.dot{width:10px;height:10px;border-radius:50%;background:var(--accent2);display:inline-block;}
+  #sync-status{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;}
+  #sync-status .dotstat{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;}
+  #sync-status.ok .dotstat{background:var(--accent2);}
+  #sync-status.err .dotstat{background:var(--danger);}
+  .tabs{display:flex; gap:8px;}
+  .tab-btn{
+    background:var(--panel2); border:1px solid var(--border); color:var(--muted);
+    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px; transition:.15s;
+  }
+  .tab-btn.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  main{padding:24px 28px; max-width:1500px; margin:0 auto;}
+  .section{display:none;}
+  .section.active{display:block;}
+
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:18px; margin-bottom:18px;
+  }
+  .card h2{margin:0 0 14px; font-size:16px; color:var(--accent);}
+  .card h3.sub{margin:22px 0 12px; font-size:14px; color:var(--text); border-top:1px solid var(--border); padding-top:16px;}
+
+  .form-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px;}
+  label{font-size:12px; color:var(--muted); margin-bottom:5px; display:block;}
+  input, select, textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    padding:9px 10px; border-radius:8px; font-size:14px; font-family:inherit;
+  }
+  textarea{resize:vertical; min-height:38px;}
+  input:focus, select:focus, textarea:focus{outline:none; border-color:var(--accent);}
+  .field{display:flex; flex-direction:column;}
+  .form-actions{margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;}
+  button.primary{
+    background:var(--accent); color:#fff; border:none; padding:10px 20px;
+    border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;
+  }
+  button.primary:disabled{opacity:.6; cursor:not-allowed;}
+  button.secondary{
+    background:transparent; border:1px solid var(--border); color:var(--text);
+    padding:10px 18px; border-radius:8px; cursor:pointer; font-size:14px;
+  }
+  button.danger{background:var(--danger); color:#fff; border:none; padding:8px 14px; border-radius:7px; cursor:pointer; font-size:13px;}
+  button.small{padding:6px 12px; font-size:12px; border-radius:6px;}
+
+  .filters-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px;}
+  .filter-summary{margin-top:12px; color:var(--muted); font-size:13px;}
+
+  .table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:10px;}
+  table{border-collapse:collapse; width:100%; font-size:13px; min-width:900px;}
+  th, td{padding:10px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap;}
+  th{background:var(--panel2); position:sticky; top:0; color:var(--accent); cursor:pointer; user-select:none;}
+  th:hover{color:#fff;}
+  tr:hover td{background:rgba(91,140,255,0.06);}
+  .badge{padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; display:inline-block;}
+  .badge.yes{background:rgba(61,220,151,0.15); color:var(--accent2);}
+  .badge.no{background:rgba(255,107,107,0.15); color:var(--danger);}
+  .badge.pending{background:rgba(255,180,84,0.15); color:var(--warn);}
+  .row-actions{display:flex; gap:6px;}
+  .empty-msg{padding:30px; text-align:center; color:var(--muted);}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:18px;}
+  .stat{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:16px; text-align:center;
+  }
+  .stat .num{font-size:26px; font-weight:700; color:var(--accent);}
+  .stat .lbl{font-size:12px; color:var(--muted); margin-top:4px;}
+  .chart-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:18px;}
+  .chart-box{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; height:340px;}
+  .chart-box h3{margin:0 0 10px; font-size:14px; color:var(--text);}
+  .chart-box canvas{max-height:270px;}
+
+  .top-actions{display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;}
+
+  .overdue{color:var(--danger); font-weight:700;}
+  .soon{color:var(--warn); font-weight:700;}
+
+  .loading-overlay{
+    position:fixed; inset:0; background:rgba(11,15,25,0.85); display:flex;
+    align-items:center; justify-content:center; z-index:999; color:var(--muted); font-size:15px;
+  }
+
+  /* Customer list (table tab) */
+  .customer-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:14px 18px; margin-bottom:10px; cursor:pointer; transition:.15s;
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;
+  }
+  .customer-card:hover{border-color:var(--accent);}
+  .customer-card .cname{font-size:15px; font-weight:600;}
+  .customer-card .cmeta{font-size:12px; color:var(--muted); margin-top:3px;}
+  .customer-card .cbadges{display:flex; gap:6px; flex-wrap:wrap;}
+
+  /* Detail / timeline modal */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(5,8,15,0.75); z-index:200;
+    display:none; align-items:flex-start; justify-content:center; padding:30px 16px; overflow-y:auto;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--panel); border:1px solid var(--border); border-radius:16px;
+    max-width:820px; width:100%; padding:24px; position:relative;
+  }
+  .modal-close{position:absolute; top:16px; left:16px; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text); border-radius:8px; width:32px; height:32px; cursor:pointer; font-size:16px;}
+  .modal-header{margin-bottom:6px;}
+  .modal-header h2{margin:0; font-size:20px;}
+  .modal-header .meta{color:var(--muted); font-size:13px; margin-top:4px;}
+
+  .timeline{margin-top:20px; border-right:2px solid var(--border); padding-right:20px; position:relative;}
+  .layer{
+    background:var(--panel2); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; margin-bottom:14px; position:relative;
+  }
+  .layer::before{
+    content:''; position:absolute; right:-27px; top:18px; width:11px; height:11px;
+    border-radius:50%; background:var(--accent); border:2px solid var(--panel);
+  }
+  .layer .layer-date{font-size:13px; font-weight:700; color:var(--accent); margin-bottom:6px;}
+  .layer .layer-row{font-size:13px; margin:3px 0; color:var(--text);}
+  .layer .layer-row .k{color:var(--muted);}
+  .layer-actions{margin-top:8px; display:flex; gap:6px;}
+
+  .add-layer-form{
+    background:var(--panel2); border:1px dashed var(--accent); border-radius:12px; padding:16px; margin-top:16px;
+  }
+
+  ::-webkit-scrollbar{height:8px; width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--border); border-radius:4px;}
+
+  @media(max-width:700px){
+    main{padding:14px;}
+    header{padding:14px;}
+    .timeline{padding-right:14px;}
+    .layer::before{right:-19px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading-overlay">جاري تحميل البيانات...</div>
+
+<header>
+  <h1><span class="dot"></span> متابعة عملاء تفاعل</h1>
+  <div id="sync-status"><span class="dotstat"></span> <span id="sync-text">جاري الاتصال...</span></div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="entry">إضافة عميل</button>
+    <button class="tab-btn" data-tab="table">قائمة العملاء</button>
+    <button class="tab-btn" data-tab="dashboard">لوحة التحليل</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= ENTRY TAB: new customer (basic info only) ================= -->
+  <section id="entry" class="section active">
+    <div class="card">
+      <h2>إضافة عميل جديد</h2>
+      <p style="color:var(--muted); font-size:13px; margin-top:-8px;">البيانات الأساسية بس هنا. أي تفاصيل متابعة (المرحلة، المشكلة، الشراء...) بتتضاف كـ "طبقة متابعة" بعد كده من داخل بروفايل العميل.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label>اسم العميل *</label>
+          <input type="text" id="f-name" placeholder="اسم العميل">
+        </div>
+        <div class="field">
+          <label>رقم الهاتف</label>
+          <input type="text" id="f-phone" placeholder="01xxxxxxxxx">
+        </div>
+        <div class="field">
+          <label>النوع</label>
+          <select id="f-gender">
+            <option value="">-- اختر --</option>
+            <option value="ذكر">ذكر</option>
+            <option value="أنثى">أنثى</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="primary" id="save-btn" onclick="saveNewCustomer()">حفظ العميل</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TABLE TAB: customer list ================= -->
+  <section id="table" class="section">
+    <div class="card">
+      <h2>الفلاتر</h2>
+      <div class="filters-grid">
+        <div class="field">
+          <label>بحث بالاسم / الهاتف</label>
+          <input type="text" id="flt-search" oninput="renderCustomerList()" placeholder="ابحث...">
+        </div>
+        <div class="field">
+          <label>النوع</label>
+          <select id="flt-gender" onchange="renderCustomerList()">
+            <option value="">الكل</option>
+            <option value="ذكر">ذكر</option>
+            <option value="أنثى">أنثى</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>الشخص المسؤول (آخر متابعة)</label>
+          <select id="flt-rep" onchange="renderCustomerList()">
+            <option value="">الكل</option>
+            <option value="مصطفى">مصطفى</option>
+            <option value="سما">سما</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>عنده مشكلة؟ (آخر متابعة)</label>
+          <select id="flt-hasissue" onchange="renderCustomerList()">
+            <option value="">الكل</option>
+            <option value="نعم">نعم</option>
+            <option value="لا">لا</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>تواصل هاتفيا؟ (آخر متابعة)</label>
+          <select id="flt-called" onchange="renderCustomerList()">
+            <option value="">الكل</option>
+            <option value="نعم">نعم</option>
+            <option value="لا">لا</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>اشترى؟ (آخر متابعة)</label>
+          <select id="flt-purchased" onchange="renderCustomerList()">
+            <option value="">الكل</option>
+            <option value="نعم">نعم</option>
+            <option value="لا">لا</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>مرحلة العميل (آخر متابعة)</label>
+          <input type="text" id="flt-stage" oninput="renderCustomerList()" placeholder="فلتر بالمرحلة">
+        </div>
+        <div class="field">
+          <label>سبب عدم الشراء (آخر متابعة)</label>
+          <input type="text" id="flt-reason" oninput="renderCustomerList()" placeholder="فلتر بالسبب">
+        </div>
+        <div class="field">
+          <label>آخر تواصل من</label>
+          <input type="date" id="flt-lastdate-from" onchange="renderCustomerList()">
+        </div>
+        <div class="field">
+          <label>آخر تواصل إلى</label>
+          <input type="date" id="flt-lastdate-to" onchange="renderCustomerList()">
+        </div>
+        <div class="field">
+          <label>الفولو أب القادم من</label>
+          <input type="date" id="flt-nextdate-from" onchange="renderCustomerList()">
+        </div>
+        <div class="field">
+          <label>الفولو أب القادم إلى</label>
+          <input type="date" id="flt-nextdate-to" onchange="renderCustomerList()">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="secondary small" onclick="clearFilters()">مسح الفلاتر</button>
+        <button class="secondary small" onclick="loadAll()">🔄 تحديث البيانات</button>
+      </div>
+      <div class="filter-summary" id="filter-summary"></div>
+    </div>
+
+    <div class="top-actions">
+      <button class="secondary" onclick="exportJSON()">⬇ تصدير نسخة احتياطية (JSON)</button>
+      <button class="secondary" onclick="exportCSV()">⬇ تصدير Excel (CSV) - آخر متابعة لكل عميل</button>
+    </div>
+
+    <div id="customer-list"></div>
+    <div id="empty-msg" class="empty-msg" style="display:none;">لا توجد بيانات مطابقة</div>
+  </section>
+
+  <!-- ================= DASHBOARD TAB ================= -->
+  <section id="dashboard" class="section">
+    <div class="stat-grid" id="stat-grid"></div>
+    <div class="chart-grid">
+      <div class="chart-box"><h3>معدل الشراء لكل مسؤول متابعة</h3><canvas id="chart-rep-purchase"></canvas></div>
+      <div class="chart-box"><h3>نجاح التواصل الهاتفي لكل مسؤول</h3><canvas id="chart-rep-called"></canvas></div>
+      <div class="chart-box"><h3>إجمالي المتابعات لكل مسؤول</h3><canvas id="chart-rep-total"></canvas></div>
+      <div class="chart-box"><h3>الشراء مقابل عدم الشراء (عملاء)</h3><canvas id="chart-purchase-pie"></canvas></div>
+      <div class="chart-box"><h3>أسباب عدم الشراء</h3><canvas id="chart-reasons"></canvas></div>
+      <div class="chart-box"><h3>توزيع النوع (ذكر / أنثى)</h3><canvas id="chart-gender"></canvas></div>
+      <div class="chart-box"><h3>المتابعات اللي فيها مشكلة</h3><canvas id="chart-issues"></canvas></div>
+      <div class="chart-box"><h3>عدد المتابعات حسب الشهر</h3><canvas id="chart-timeline"></canvas></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ================= CUSTOMER DETAIL MODAL ================= -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-header">
+      <h2 id="modal-name"></h2>
+      <div class="meta" id="modal-meta"></div>
+    </div>
+
+    <div class="add-layer-form">
+      <h3 style="margin:0 0 12px; font-size:14px; color:var(--accent2);" id="layer-form-title">➕ إضافة طبقة متابعة جديدة</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label>الشخص المسؤول</label>
+          <select id="l-rep">
+            <option value="">-- اختر --</option>
+            <option value="مصطفى">مصطفى</option>
+            <option value="سما">سما</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>وصلت معاه لحد فين (مرحلة العميل)</label>
+          <input type="text" id="l-stage" placeholder="مثال: عرض السعر / تفاوض">
+        </div>
+        <div class="field">
+          <label>عنده مشكلة؟</label>
+          <select id="l-hasissue">
+            <option value="لا">لا</option>
+            <option value="نعم">نعم</option>
+          </select>
+        </div>
+        <div class="field" id="l-issue-detail-wrap" style="display:none;">
+          <label>تفاصيل المشكلة</label>
+          <input type="text" id="l-issue-detail" placeholder="تفاصيل المشكلة">
+        </div>
+        <div class="field">
+          <label>تواصلت معاه هاتفيا؟</label>
+          <select id="l-called">
+            <option value="لا">لا</option>
+            <option value="نعم">نعم</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>اشترى؟</label>
+          <select id="l-purchased">
+            <option value="لا">لا</option>
+            <option value="نعم">نعم</option>
+          </select>
+        </div>
+        <div class="field" id="l-reason-wrap">
+          <label>سبب عدم الشراء</label>
+          <input type="text" id="l-reason" placeholder="السبب (لو ما اشتريش)">
+        </div>
+        <div class="field">
+          <label>تاريخ المتابعة دي</label>
+          <input type="date" id="l-date">
+        </div>
+        <div class="field">
+          <label>تاريخ الفولو أب القادم</label>
+          <input type="date" id="l-nextdate">
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>ملاحظات</label>
+          <textarea id="l-notes" placeholder="أي ملاحظات..."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="primary" id="l-save-btn" onclick="saveLayer()">حفظ الطبقة</button>
+        <button class="secondary" id="l-cancel-btn" onclick="cancelLayerEdit()" style="display:none;">إلغاء</button>
+      </div>
+    </div>
+
+    <h3 style="margin:22px 0 6px; font-size:14px; color:var(--text);">📜 سجل المتابعة (من الأحدث للأقدم)</h3>
+    <div class="timeline" id="timeline-container"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://lmrhbuvdrynbrlxdkbyy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_0HzAtoLsG7pI0JHM5UE7wA_Sug9OjUy';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let customers = [];      // [{id,name,phone,gender,created_at}]
+let interactions = [];   // [{id,customer_id,rep,stage,has_issue,issue_detail,called,purchased,reason,interaction_date,next_date,notes,created_at}]
+let currentCustomerId = null;
+let editingLayerId = null;
+
+function setSyncStatus(state, text) {
+  const el = document.getElementById('sync-status');
+  el.className = state;
+  document.getElementById('sync-text').textContent = text;
+}
+
+/* ---------------- Load ---------------- */
+async function loadAll() {
+  setSyncStatus('', 'جاري تحميل البيانات...');
+  const [custRes, interRes] = await Promise.all([
+    sb.from('customers').select('*').order('created_at', { ascending: false }),
+    sb.from('interactions').select('*').order('interaction_date', { ascending: false })
+  ]);
+  if (custRes.error || interRes.error) {
+    setSyncStatus('err', 'فشل الاتصال: ' + (custRes.error?.message || interRes.error?.message));
+    console.error(custRes.error, interRes.error);
+    return;
+  }
+  customers = custRes.data || [];
+  interactions = interRes.data || [];
+  setSyncStatus('ok', `متصل — ${customers.length} عميل`);
+  renderCustomerList();
+  renderDashboard();
+  document.getElementById('loading-overlay').style.display = 'none';
+}
+
+function latestInteraction(customerId) {
+  const list = interactions.filter(i => i.customer_id === customerId);
+  if (!list.length) return null;
+  return list.slice().sort((a,b) => (b.interaction_date||'').localeCompare(a.interaction_date||''))[0];
+}
+function customerInteractions(customerId) {
+  return interactions.filter(i => i.customer_id === customerId)
+    .slice().sort((a,b) => (b.interaction_date||b.created_at||'').localeCompare(a.interaction_date||a.created_at||''));
+}
+
+/* ---------------- Tabs ---------------- */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'table') renderCustomerList();
+    if (btn.dataset.tab === 'dashboard') renderDashboard();
+  });
+});
+
+/* ---------------- New customer ---------------- */
+async function saveNewCustomer() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { alert('من فضلك أدخل اسم العميل'); return; }
+  const obj = {
+    name,
+    phone: document.getElementById('f-phone').value.trim(),
+    gender: document.getElementById('f-gender').value
+  };
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = 'جاري الحفظ...';
+  const { error } = await sb.from('customers').insert(obj);
+  btn.disabled = false; btn.textContent = 'حفظ العميل';
+  if (error) { alert('حدث خطأ: ' + error.message); return; }
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-phone').value = '';
+  document.getElementById('f-gender').value = '';
+  await loadAll();
+  alert('تم حفظ العميل. تقدر تضيفله أول طبقة متابعة من قائمة العملاء.');
+  document.querySelector('[data-tab="table"]').click();
+}
+
+/* ---------------- Filters / list ---------------- */
+function getFilteredCustomers() {
+  const search = document.getElementById('flt-search').value.trim().toLowerCase();
+  const gender = document.getElementById('flt-gender').value;
+  const rep = document.getElementById('flt-rep').value;
+  const hasIssue = document.getElementById('flt-hasissue').value;
+  const called = document.getElementById('flt-called').value;
+  const purchased = document.getElementById('flt-purchased').value;
+  const stage = document.getElementById('flt-stage').value.trim().toLowerCase();
+  const reason = document.getElementById('flt-reason').value.trim().toLowerCase();
+  const ldFrom = document.getElementById('flt-lastdate-from').value;
+  const ldTo = document.getElementById('flt-lastdate-to').value;
+  const ndFrom = document.getElementById('flt-nextdate-from').value;
+  const ndTo = document.getElementById('flt-nextdate-to').value;
+
+  return customers.filter(c => {
+    if (search && !(`${c.name} ${c.phone||''}`.toLowerCase().includes(search))) return false;
+    if (gender && c.gender !== gender) return false;
+
+    const li = latestInteraction(c.id);
+    if (rep && (!li || li.rep !== rep)) return false;
+    if (hasIssue && (!li || li.has_issue !== hasIssue)) return false;
+    if (called && (!li || li.called !== called)) return false;
+    if (purchased && (!li || li.purchased !== purchased)) return false;
+    if (stage && !((li && li.stage || '').toLowerCase().includes(stage))) return false;
+    if (reason && !((li && li.reason || '').toLowerCase().includes(reason))) return false;
+    if (ldFrom && (!li || !li.interaction_date || li.interaction_date < ldFrom)) return false;
+    if (ldTo && (!li || !li.interaction_date || li.interaction_date > ldTo)) return false;
+    if (ndFrom && (!li || !li.next_date || li.next_date < ndFrom)) return false;
+    if (ndTo && (!li || !li.next_date || li.next_date > ndTo)) return false;
+    return true;
+  });
+}
+
+function clearFilters() {
+  ['flt-search','flt-stage','flt-reason','flt-lastdate-from','flt-lastdate-to','flt-nextdate-from','flt-nextdate-to']
+    .forEach(id => document.getElementById(id).value = '');
+  ['flt-gender','flt-rep','flt-hasissue','flt-called','flt-purchased'].forEach(id => document.getElementById(id).value = '');
+  renderCustomerList();
+}
+
+function badge(val) {
+  if (val === 'نعم') return `<span class="badge yes">نعم</span>`;
+  if (val === 'لا') return `<span class="badge no">لا</span>`;
+  return `<span class="badge pending">-</span>`;
+}
+function esc(v) {
+  if (v === undefined || v === null) return '';
+  return String(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function renderCustomerList() {
+  const list = getFilteredCustomers();
+  const container = document.getElementById('customer-list');
+  container.innerHTML = '';
+  document.getElementById('empty-msg').style.display = list.length ? 'none' : 'block';
+
+  const today = new Date().toISOString().slice(0,10);
+  const in3days = new Date(Date.now() + 3*86400000).toISOString().slice(0,10);
+
+  list.forEach(c => {
+    const li = latestInteraction(c.id);
+    let nextDateHtml = '<span style="color:var(--muted)">لا يوجد</span>';
+    if (li && li.next_date) {
+      let cls = '';
+      if (li.next_date < today) cls = 'overdue';
+      else if (li.next_date <= in3days) cls = 'soon';
+      nextDateHtml = `<span class="${cls}">${esc(li.next_date)}</span>`;
+    }
+    const div = document.createElement('div');
+    div.className = 'customer-card';
+    div.onclick = () => openModal(c.id);
+    div.innerHTML = `
+      <div>
+        <div class="cname">${esc(c.name)} ${c.gender ? '· ' + esc(c.gender) : ''}</div>
+        <div class="cmeta">${esc(c.phone) || 'بدون رقم'} ${li ? '· آخر متابعة: ' + esc(li.interaction_date||'-') + ' بواسطة ' + esc(li.rep||'-') : '· لا يوجد متابعة بعد'} · الفولو أب القادم: ${''}</div>
+      </div>
+      <div class="cbadges">
+        ${li ? `
+          <span class="badge pending">${esc(li.stage || 'بدون مرحلة')}</span>
+          ${badge(li.has_issue)==='' ? '' : ''}
+          مشكلة ${badge(li.has_issue)}
+          تواصل ${badge(li.called)}
+          اشترى ${badge(li.purchased)}
+        ` : `<span class="badge pending">جديد</span>`}
+      </div>
+    `;
+    // fix next date placeholder inline (kept simple, replaced below)
+    div.querySelector('.cmeta').innerHTML =
+      `${esc(c.phone) || 'بدون رقم'} ${li ? '· آخر متابعة: ' + esc(li.interaction_date||'-') + ' بواسطة ' + esc(li.rep||'-') : '· لا يوجد متابعة بعد'} · الفولو أب القادم: ${nextDateHtml}`;
+    container.appendChild(div);
+  });
+
+  document.getElementById('filter-summary').textContent = `عدد النتائج: ${list.length} من إجمالي ${customers.length}`;
+}
+
+/* ---------------- Modal / timeline ---------------- */
+function openModal(customerId) {
+  currentCustomerId = customerId;
+  const c = customers.find(x => x.id === customerId);
+  if (!c) return;
+  document.getElementById('modal-name').textContent = c.name;
+  document.getElementById('modal-meta').textContent = `${c.phone || 'بدون رقم'} · ${c.gender || 'النوع غير محدد'}`;
+  cancelLayerEdit();
+  renderTimeline();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  currentCustomerId = null;
+}
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target.id === 'modal-overlay') closeModal();
+});
+
+document.getElementById('l-hasissue').addEventListener('change', e => {
+  document.getElementById('l-issue-detail-wrap').style.display = e.target.value === 'نعم' ? 'block' : 'none';
+});
+document.getElementById('l-purchased').addEventListener('change', e => {
+  document.getElementById('l-reason-wrap').style.display = e.target.value === 'لا' ? 'block' : 'none';
+});
+
+function resetLayerForm() {
+  ['l-stage','l-issue-detail','l-reason','l-date','l-nextdate','l-notes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('l-rep').value = '';
+  document.getElementById('l-hasissue').value = 'لا';
+  document.getElementById('l-called').value = 'لا';
+  document.getElementById('l-purchased').value = 'لا';
+  document.getElementById('l-issue-detail-wrap').style.display = 'none';
+  document.getElementById('l-reason-wrap').style.display = 'block';
+  document.getElementById('l-date').value = new Date().toISOString().slice(0,10);
+}
+
+async function saveLayer() {
+  if (!currentCustomerId) return;
+  const obj = {
+    customer_id: currentCustomerId,
+    rep: document.getElementById('l-rep').value,
+    stage: document.getElementById('l-stage').value.trim(),
+    has_issue: document.getElementById('l-hasissue').value,
+    issue_detail: document.getElementById('l-issue-detail').value.trim(),
+    called: document.getElementById('l-called').value,
+    purchased: document.getElementById('l-purchased').value,
+    reason: document.getElementById('l-reason').value.trim(),
+    interaction_date: document.getElementById('l-date').value || null,
+    next_date: document.getElementById('l-nextdate').value || null,
+    notes: document.getElementById('l-notes').value.trim()
+  };
+
+  const btn = document.getElementById('l-save-btn');
+  btn.disabled = true; btn.textContent = 'جاري الحفظ...';
+
+  let error;
+  if (editingLayerId) {
+    ({ error } = await sb.from('interactions').update(obj).eq('id', editingLayerId));
+  } else {
+    ({ error } = await sb.from('interactions').insert(obj));
+  }
+  btn.disabled = false; btn.textContent = 'حفظ الطبقة';
+
+  if (error) { alert('حدث خطأ: ' + error.message); return; }
+
+  cancelLayerEdit();
+  await loadAll();
+  renderTimeline();
+}
+
+function editLayer(layerId) {
+  const l = interactions.find(x => x.id === layerId);
+  if (!l) return;
+  editingLayerId = layerId;
+  document.getElementById('l-rep').value = l.rep || '';
+  document.getElementById('l-stage').value = l.stage || '';
+  document.getElementById('l-hasissue').value = l.has_issue || 'لا';
+  document.getElementById('l-issue-detail').value = l.issue_detail || '';
+  document.getElementById('l-issue-detail-wrap').style.display = l.has_issue === 'نعم' ? 'block' : 'none';
+  document.getElementById('l-called').value = l.called || 'لا';
+  document.getElementById('l-purchased').value = l.purchased || 'لا';
+  document.getElementById('l-reason-wrap').style.display = l.purchased === 'لا' ? 'block' : 'none';
+  document.getElementById('l-reason').value = l.reason || '';
+  document.getElementById('l-date').value = l.interaction_date || '';
+  document.getElementById('l-nextdate').value = l.next_date || '';
+  document.getElementById('l-notes').value = l.notes || '';
+  document.getElementById('layer-form-title').textContent = '✏️ تعديل طبقة متابعة';
+  document.getElementById('l-save-btn').textContent = 'حفظ التعديلات';
+  document.getElementById('l-cancel-btn').style.display = 'inline-block';
+  document.querySelector('.add-layer-form').scrollIntoView({behavior:'smooth', block:'start'});
+}
+function cancelLayerEdit() {
+  editingLayerId = null;
+  resetLayerForm();
+  document.getElementById('layer-form-title').textContent = '➕ إضافة طبقة متابعة جديدة';
+  document.getElementById('l-save-btn').textContent = 'حفظ الطبقة';
+  document.getElementById('l-cancel-btn').style.display = 'none';
+}
+
+async function deleteLayer(layerId) {
+  if (!confirm('متأكد إنك عايز تمسح طبقة المتابعة دي؟')) return;
+  const { error } = await sb.from('interactions').delete().eq('id', layerId);
+  if (error) { alert('حدث خطأ: ' + error.message); return; }
+  await loadAll();
+  renderTimeline();
+}
+
+async function deleteCustomer() {
+  if (!currentCustomerId) return;
+  if (!confirm('متأكد إنك عايز تمسح العميل ده وكل طبقات المتابعة بتاعته؟ الإجراء ده مش هينعمل تراجع.')) return;
+  const { error } = await sb.from('customers').delete().eq('id', currentCustomerId);
+  if (error) { alert('حدث خطأ: ' + error.message); return; }
+  closeModal();
+  await loadAll();
+}
+
+function renderTimeline() {
+  const container = document.getElementById('timeline-container');
+  const list = customerInteractions(currentCustomerId);
+  if (!list.length) {
+    container.innerHTML = '<p style="color:var(--muted); font-size:13px;">لا يوجد سجل متابعة لسه. أضف أول طبقة من الفورم فوق.</p>';
+    return;
+  }
+  container.innerHTML = list.map(l => `
+    <div class="layer">
+      <div class="layer-date">📅 ${esc(l.interaction_date || 'بدون تاريخ')} — بواسطة ${esc(l.rep || 'غير محدد')}</div>
+      <div class="layer-row"><span class="k">المرحلة:</span> ${esc(l.stage || '-')}</div>
+      <div class="layer-row"><span class="k">عنده مشكلة:</span> ${badge(l.has_issue)} ${l.issue_detail ? '— ' + esc(l.issue_detail) : ''}</div>
+      <div class="layer-row"><span class="k">تواصل هاتفيا:</span> ${badge(l.called)}</div>
+      <div class="layer-row"><span class="k">اشترى:</span> ${badge(l.purchased)} ${l.reason ? '— السبب: ' + esc(l.reason) : ''}</div>
+      ${l.next_date ? `<div class="layer-row"><span class="k">الفولو أب القادم:</span> ${esc(l.next_date)}</div>` : ''}
+      ${l.notes ? `<div class="layer-row"><span class="k">ملاحظات:</span> ${esc(l.notes)}</div>` : ''}
+      <div class="layer-actions">
+        <button class="secondary small" onclick="editLayer('${l.id}')">تعديل</button>
+        <button class="danger small" onclick="deleteLayer('${l.id}')">حذف</button>
+      </div>
+    </div>
+  `).join('') + `
+    <div style="margin-top:16px;">
+      <button class="danger small" onclick="deleteCustomer()">🗑 حذف العميل بالكامل</button>
+    </div>
+  `;
+}
+
+/* ---------------- Export ---------------- */
+function exportJSON() {
+  const payload = { customers, interactions };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  downloadBlob(blob, `tafaal-customers-backup-${new Date().toISOString().slice(0,10)}.json`);
+}
+function exportCSV() {
+  const headers = ['الاسم','الهاتف','النوع','المسؤول (آخر متابعة)','المرحلة','عنده مشكلة','تفاصيل المشكلة','تواصل هاتفيا','اشترى','سبب عدم الشراء','آخر تواصل','الفولو أب القادم'];
+  const rows = getFilteredCustomers().map(c => {
+    const li = latestInteraction(c.id) || {};
+    return [c.name,c.phone,c.gender,li.rep,li.stage,li.has_issue,li.issue_detail,li.called,li.purchased,li.reason,li.interaction_date,li.next_date];
+  });
+  let csv = '\uFEFF' + headers.join(',') + '\n';
+  rows.forEach(r => {
+    csv += r.map(v => `"${(v||'').toString().replace(/"/g,'""')}"`).join(',') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  downloadBlob(blob, `tafaal-customers-${new Date().toISOString().slice(0,10)}.csv`);
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ---------------- Dashboard ---------------- */
+let chartInstances = {};
+function destroyCharts() {
+  Object.values(chartInstances).forEach(ch => ch && ch.destroy());
+  chartInstances = {};
+}
+
+const COLORS = {
+  accent:'#5b8cff', accent2:'#3ddc97', warn:'#ffb454', danger:'#ff6b6b',
+  purple:'#b18cff', gray:'#5b6b8c'
+};
+Chart.defaults.color = '#93a0bf';
+Chart.defaults.borderColor = '#2a3450';
+Chart.defaults.font.family = "'Segoe UI', Tahoma, Arial, sans-serif";
+
+function renderDashboard() {
+  destroyCharts();
+
+  const totalCustomers = customers.length;
+  const purchasedCustomers = customers.filter(c => {
+    const li = latestInteraction(c.id);
+    return li && li.purchased === 'نعم';
+  }).length;
+  const calledInteractions = interactions.filter(i => i.called === 'نعم').length;
+  const withIssueInteractions = interactions.filter(i => i.has_issue === 'نعم').length;
+  const today = new Date().toISOString().slice(0,10);
+  const overdue = customers.filter(c => {
+    const li = latestInteraction(c.id);
+    return li && li.next_date && li.next_date < today && li.purchased !== 'نعم';
+  }).length;
+  const rate = totalCustomers ? Math.round((purchasedCustomers/totalCustomers)*100) : 0;
+
+  document.getElementById('stat-grid').innerHTML = `
+    <div class="stat"><div class="num">${totalCustomers}</div><div class="lbl">إجمالي العملاء</div></div>
+    <div class="stat"><div class="num">${purchasedCustomers}</div><div class="lbl">اشتروا</div></div>
+    <div class="stat"><div class="num">${rate}%</div><div class="lbl">معدل التحويل</div></div>
+    <div class="stat"><div class="num">${interactions.length}</div><div class="lbl">إجمالي المتابعات</div></div>
+    <div class="stat"><div class="num">${calledInteractions}</div><div class="lbl">متابعات فيها تواصل هاتفي</div></div>
+    <div class="stat"><div class="num" style="color:${overdue?COLORS.danger:COLORS.accent2}">${overdue}</div><div class="lbl">فولو أب متأخر</div></div>
+  `;
+
+  const reps = ['مصطفى','سما'];
+
+  const repPurchaseRates = reps.map(r => {
+    const repInter = interactions.filter(i => i.rep === r);
+    const p = repInter.filter(i => i.purchased === 'نعم').length;
+    return repInter.length ? Math.round((p/repInter.length)*100) : 0;
+  });
+  chartInstances.repPurchase = new Chart(document.getElementById('chart-rep-purchase'), {
+    type:'bar',
+    data:{ labels:reps, datasets:[{ label:'معدل الشراء %', data:repPurchaseRates, backgroundColor:[COLORS.accent, COLORS.purple], borderRadius:6 }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100}} }
+  });
+
+  const repCallRates = reps.map(r => {
+    const repInter = interactions.filter(i => i.rep === r);
+    const cd = repInter.filter(i => i.called === 'نعم').length;
+    return repInter.length ? Math.round((cd/repInter.length)*100) : 0;
+  });
+  chartInstances.repCalled = new Chart(document.getElementById('chart-rep-called'), {
+    type:'bar',
+    data:{ labels:reps, datasets:[{ label:'نسبة التواصل الهاتفي %', data:repCallRates, backgroundColor:[COLORS.accent2, COLORS.warn], borderRadius:6 }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100}} }
+  });
+
+  const repTotals = reps.map(r => interactions.filter(i => i.rep === r).length);
+  chartInstances.repTotal = new Chart(document.getElementById('chart-rep-total'), {
+    type:'doughnut',
+    data:{ labels:reps, datasets:[{ data:repTotals, backgroundColor:[COLORS.accent, COLORS.purple] }]},
+    options:{ responsive:true, maintainAspectRatio:false }
+  });
+
+  chartInstances.purchasePie = new Chart(document.getElementById('chart-purchase-pie'), {
+    type:'pie',
+    data:{ labels:['اشترى','لم يشترِ بعد'], datasets:[{ data:[purchasedCustomers, totalCustomers-purchasedCustomers], backgroundColor:[COLORS.accent2, COLORS.danger] }]},
+    options:{ responsive:true, maintainAspectRatio:false }
+  });
+
+  const reasonCounts = {};
+  interactions.filter(i => i.purchased === 'لا' && i.reason).forEach(i => {
+    reasonCounts[i.reason] = (reasonCounts[i.reason]||0)+1;
+  });
+  const reasonLabels = Object.keys(reasonCounts);
+  chartInstances.reasons = new Chart(document.getElementById('chart-reasons'), {
+    type:'bar',
+    data:{ labels:reasonLabels.length?reasonLabels:['لا توجد بيانات'], datasets:[{ label:'عدد المرات', data:reasonLabels.length?Object.values(reasonCounts):[0], backgroundColor:COLORS.danger, borderRadius:6 }]},
+    options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}} }
+  });
+
+  const genders = ['ذكر','أنثى'];
+  const genderCounts = genders.map(g => customers.filter(c => c.gender === g).length);
+  chartInstances.gender = new Chart(document.getElementById('chart-gender'), {
+    type:'doughnut',
+    data:{ labels:genders, datasets:[{ data:genderCounts, backgroundColor:[COLORS.accent, COLORS.purple] }]},
+    options:{ responsive:true, maintainAspectRatio:false }
+  });
+
+  chartInstances.issues = new Chart(document.getElementById('chart-issues'), {
+    type:'pie',
+    data:{ labels:['فيها مشكلة','مفيهاش مشكلة'], datasets:[{ data:[withIssueInteractions, interactions.length-withIssueInteractions], backgroundColor:[COLORS.warn, COLORS.gray] }]},
+    options:{ responsive:true, maintainAspectRatio:false }
+  });
+
+  const monthCounts = {};
+  interactions.forEach(i => {
+    if (i.interaction_date) {
+      const m = i.interaction_date.slice(0,7);
+      monthCounts[m] = (monthCounts[m]||0)+1;
+    }
+  });
+  const months = Object.keys(monthCounts).sort();
+  chartInstances.timeline = new Chart(document.getElementById('chart-timeline'), {
+    type:'line',
+    data:{ labels:months, datasets:[{ label:'عدد المتابعات', data:months.map(m=>monthCounts[m]), borderColor:COLORS.accent, backgroundColor:'rgba(91,140,255,0.15)', fill:true, tension:0.3 }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+  });
+}
+
+/* ---------------- Init ---------------- */
+resetLayerForm();
+loadAll();
+
+sb.channel('data-changes')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => loadAll())
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, () => { loadAll(); if(currentCustomerId) renderTimeline(); })
+  .subscribe();
+</script>
+</body>
+</html>
